@@ -1,0 +1,33 @@
+# Melissa Voice Assistant - Dependencies
+# Install with: pip install -r requirements.txt
+
+# ============================================
+# Core LiveKit Agents Framework
+# ============================================
+livekit-agents>=1.0.0
+livekit-plugins-openai>=1.0.0      # OpenAI STT (Whisper) + LLM (GPT-4)
+livekit-plugins-silero>=1.0.0      # Voice Activity Detection (VAD)
+livekit-agents[fishaudio]          # Fish Audio TTS
+
+# ============================================
+# AI Memory System
+# ============================================
+mem0ai>=0.1.0                      # Mem0 AI for intelligent memory
+
+# ============================================
+# Web Search
+# ============================================
+duckduckgo-search>=6.0.0           # Free web search (no API key needed)
+
+# ============================================
+# Wake Word Detection (Optional)
+# ============================================
+pvporcupine>=3.0.0                 # Picovoice wake word detection
+pyaudio>=0.2.14                    # Audio input for wake word
+
+# ============================================
+# Utilities
+# ============================================
+python-dotenv>=1.0.0               # Environment variable loading
+openai>=1.0.0                      # OpenAI client (for Mem0 embeddings)
+numpy>=1.24.0                      # Numerical operations
