@@ -126,6 +126,10 @@ melissa-voice-assistant/
 ├── start_melissa.sh      # One-command startup script
 ├── requirements.txt      # Python dependencies
 ├── env.example           # Environment variables template
+├── agents-playground/    # Local web UI for voice interaction
+│   ├── src/              # Next.js source code
+│   ├── package.json      # Node.js dependencies
+│   └── README.md         # Playground-specific docs
 └── README.md             # This file
 ```
 
@@ -211,6 +215,60 @@ Once connected, try saying:
 **Conversation:**
 - "Tell me a joke"
 - "Goodbye" (ends the session)
+
+---
+
+## 🎮 LiveKit Agents Playground
+
+The **Agents Playground** is a web interface to interact with Melissa. You have two options:
+
+### Option 1: Use Hosted Playground (Easiest)
+
+1. Start Melissa: `./start_melissa.sh`
+2. Open [https://agents-playground.livekit.io](https://agents-playground.livekit.io)
+3. Click **"Connect"** and enter:
+   - **LiveKit URL:** `ws://localhost:7880`
+   - **API Key:** `devkey`
+   - **API Secret:** `secret`
+4. Click **"Connect"** and start talking!
+
+### Option 2: Run Playground Locally
+
+The repository includes a local copy of the Agents Playground in `agents-playground/`:
+
+```bash
+# Navigate to the playground directory
+cd agents-playground
+
+# Install dependencies (first time only)
+npm install
+# or with pnpm:
+pnpm install
+
+# Start the development server
+npm run dev
+# or:
+pnpm dev
+```
+
+Then open [http://localhost:3000](http://localhost:3000) in your browser.
+
+**Configuration for local playground:**
+
+Create `agents-playground/.env.local`:
+```env
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=secret
+LIVEKIT_URL=ws://localhost:7880
+```
+
+### Playground Features
+
+- 🎤 **Voice Chat** - Talk to Melissa in real-time
+- 💬 **Text Chat** - Type messages if you prefer
+- 📊 **Transcription** - See live transcription of your conversation
+- 🔧 **Settings** - Adjust audio input/output devices
+- 📱 **Mobile Friendly** - Works on phones and tablets
 
 ---
 
