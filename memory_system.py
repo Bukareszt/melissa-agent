@@ -10,9 +10,9 @@ Provides intelligent, persistent memory that:
 Mem0 Docs: https://docs.mem0.ai/
 """
 
-import os
+import asyncio
 import logging
-from typing import Optional, List, Dict, Any
+from typing import List, Dict
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -84,87 +84,21 @@ class Mem0Memory:
             logger.error(f"❌ Mem0 initialization failed: {e}", exc_info=True)
             return False
     
-    async def add_memory(self, content: str, metadata: Optional[Dict] = None) -> str:
-        """
-        Add a memory. Mem0 automatically extracts facts.
-        
-        Args:
-            content: The conversation or fact to remember
-            metadata: Optional metadata (category, timestamp, etc.)
-        
-        Returns:
-            Confirmation message
-        """
-        logger.info(f"📥 add_memory() called with content: {content}")
-        
-        if not self._ensure_initialized():
-            logger.error("❌ Memory system not initialized!")
-            return "Memory system not available."
-        
-        logger.info(f"✅ Memory system initialized, adding to Mem0...")
-        
-        try:
-            # Mem0 automatically extracts relevant facts from the content
-            logger.info(f"📤 Calling Mem0 client.add() with user_id={self.user_id}")
-            result = self._client.add(
-                content,
-                user_id=self.user_id,
-                metadata=metadata or {"timestamp": datetime.now().isoformat()}
-            )
-            
-            logger.info(f"📦 Mem0 raw result: {result}")
-            
-            # Log what was extracted
-            if result and "results" in result:
-                facts = [r.get("memory", "") for r in result.get("results", [])]
-                logger.info(f"🧠 Mem0 extracted facts: {facts}")
-                return f"I've learned: {', '.join(facts)}" if facts else "Got it, I'll remember that."
-            
-            logger.info("⚠️ Mem0 returned no results structure")
-            return "I'll remember that."
-            
-        except Exception as e:
-            logger.error(f"❌ Mem0 add error: {e}", exc_info=True)
-            return f"Couldn't save memory: {str(e)}"
+    def _sync_add(self, content, user_id: str, metadata: Dict) -> Dict:
+        """Synchronous wrapper for Mem0 add operation."""
+        return self._client.add(content, user_id=user_id, metadata=metadata)
     
-    async def search_memories(self, query: str, limit: int = 5) -> str:
-        """
-        Search memories using semantic search.
-        
-        Args:
-            query: What to search for
-            limit: Max results to return
-            
-        Returns:
-            Formatted search results
-        """
-        if not self._ensure_initialized():
-            return "Memory system not available."
-        
-        try:
-            results = self._client.search(
-                query,
-                user_id=self.user_id,
-                limit=limit
-            )
-            
-            if not results or not results.get("results"):
-                return f"I don't have any memories about '{query}'."
-            
-            memories = []
-            for r in results.get("results", []):
-                memory_text = r.get("memory", "")
-                score = r.get("score", 0)
-                if memory_text:
-                    memories.append(f"- {memory_text} (relevance: {score:.0%})")
-            
-            if memories:
-                return "Here's what I remember:\n" + "\n".join(memories)
-            return f"I don't have any memories about '{query}'."
-            
-        except Exception as e:
-            logger.error(f"Mem0 search error: {e}")
-            return f"Couldn't search memories: {str(e)}"
+    def _sync_search(self, query: str, user_id: str, limit: int) -> Dict:
+        """Synchronous wrapper for Mem0 search operation."""
+        return self._client.search(query, user_id=user_id, limit=limit)
+    
+    def _sync_get_all(self, user_id: str) -> Dict:
+        """Synchronous wrapper for Mem0 get_all operation."""
+        return self._client.get_all(user_id=user_id)
+    
+    def _sync_delete_all(self, user_id: str) -> None:
+        """Synchronous wrapper for Mem0 delete_all operation."""
+        self._client.delete_all(user_id=user_id)
     
     async def get_all_memories(self) -> str:
         """Get all stored memories."""
@@ -172,7 +106,7 @@ class Mem0Memory:
             return "Memory system not available."
         
         try:
-            results = self._client.get_all(user_id=self.user_id)
+            results = await asyncio.to_thread(self._sync_get_all, self.user_id)
             
             if not results or not results.get("results"):
                 return "I don't have any memories stored yet. Tell me things about yourself!"
@@ -191,25 +125,13 @@ class Mem0Memory:
             logger.error(f"Mem0 get_all error: {e}")
             return f"Couldn't retrieve memories: {str(e)}"
     
-    async def delete_memory(self, memory_id: str) -> str:
-        """Delete a specific memory by ID."""
-        if not self._ensure_initialized():
-            return "Memory system not available."
-        
-        try:
-            self._client.delete(memory_id)
-            return "Memory deleted."
-        except Exception as e:
-            logger.error(f"Mem0 delete error: {e}")
-            return f"Couldn't delete memory: {str(e)}"
-    
     async def delete_all_memories(self) -> str:
         """Delete all memories for the user."""
         if not self._ensure_initialized():
             return "Memory system not available."
         
         try:
-            self._client.delete_all(user_id=self.user_id)
+            await asyncio.to_thread(self._sync_delete_all, self.user_id)
             return "All memories have been deleted. Starting fresh!"
         except Exception as e:
             logger.error(f"Mem0 delete_all error: {e}")
@@ -229,10 +151,11 @@ class Mem0Memory:
             return "Memory system not available."
         
         try:
-            result = self._client.add(
+            result = await asyncio.to_thread(
+                self._sync_add,
                 messages,
-                user_id=self.user_id,
-                metadata={"type": "conversation", "timestamp": datetime.now().isoformat()}
+                self.user_id,
+                {"type": "conversation", "timestamp": datetime.now().isoformat()}
             )
             
             if result and "results" in result:
@@ -247,7 +170,7 @@ class Mem0Memory:
             logger.error(f"Mem0 add_conversation error: {e}")
             return f"Couldn't process conversation: {str(e)}"
     
-    def get_relevant_context(self, query: str, limit: int = 3) -> str:
+    async def get_relevant_context(self, query: str, limit: int = 3) -> str:
         """
         Get relevant memories to inject into LLM context.
         This is called before each response to provide context.
@@ -258,10 +181,11 @@ class Mem0Memory:
             return ""
         
         try:
-            results = self._client.search(
+            results = await asyncio.to_thread(
+                self._sync_search,
                 query,
-                user_id=self.user_id,
-                limit=limit
+                self.user_id,
+                limit
             )
             
             if not results or not results.get("results"):
@@ -290,28 +214,6 @@ mem0_memory = Mem0Memory()
 # TOOL FUNCTIONS FOR AGENT
 # ============================================================
 
-async def mem0_remember(content: str) -> str:
-    """
-    Remember something using Mem0 AI.
-    Mem0 automatically extracts and stores relevant facts.
-    """
-    logger.info(f"🧠 ===== mem0_remember() CALLED =====")
-    logger.info(f"🧠 Content to remember: {content}")
-    result = await mem0_memory.add_memory(content)
-    logger.info(f"🧠 Result from add_memory: {result}")
-    logger.info(f"🧠 ===== mem0_remember() DONE =====")
-    return result
-
-
-async def mem0_recall(query: str) -> str:
-    """
-    Search memories using semantic search.
-    Finds memories related to the query even if words don't match exactly.
-    """
-    logger.info(f"🔍 Mem0 recall: {query}")
-    return await mem0_memory.search_memories(query)
-
-
 async def mem0_get_all() -> str:
     """Get all stored memories."""
     logger.info("📚 Mem0 get all memories")
@@ -336,10 +238,9 @@ async def mem0_learn_from_conversation(user_message: str, assistant_response: st
     return await mem0_memory.add_conversation(messages)
 
 
-def mem0_get_context(query: str) -> str:
+async def mem0_get_context(query: str) -> str:
     """
     Get relevant context for the current query.
     Used to inject memories into LLM context.
     """
-    return mem0_memory.get_relevant_context(query)
-
+    return await mem0_memory.get_relevant_context(query)

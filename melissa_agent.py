@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # LiveKit Agents imports
-from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents import JobContext, WorkerOptions, cli, ChatContext, ChatMessage
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.llm import function_tool
 
@@ -80,6 +80,7 @@ MEMORY SYSTEM:
 Your memory works AUTOMATICALLY in the background. You don't need to save things manually.
 - When user shares info like "my name is Greg", the system learns it automatically
 - Just acknowledge naturally: "Nice to meet you, Greg!" 
+- Relevant memories about the user will be provided before each response
 - Use show_what_i_know when user asks "what do you know about me?"
 - Use forget_everything when user wants to reset memory
 
@@ -94,8 +95,6 @@ PERSONALITY:
 - Warm, friendly, conversational
 - Keep responses brief (voice interaction)
 - Reference things you remember naturally
-
-Note: Memory context will be injected automatically before each response.
 """,
             stt=openai.STT(language="en"),  # OpenAI Whisper - English only
             llm=openai.LLM(model="gpt-4o-mini"),
@@ -108,6 +107,36 @@ Note: Memory context will be injected automatically before each response.
             ),
             vad=silero.VAD.load(),  # Voice Activity Detection
         )
+
+    # ========== MEMORY CONTEXT INJECTION ==========
+    
+    async def on_user_turn_completed(
+        self, turn_ctx: ChatContext, new_message: ChatMessage
+    ) -> None:
+        """
+        Called when user's turn ends, BEFORE the agent replies.
+        
+        Injects relevant memories from Mem0 into the chat context
+        so the LLM can use them when generating a response.
+        """
+        user_text = new_message.text_content
+        if not user_text:
+            return
+        
+        logger.info(f"🧠 Retrieving memory context for: '{user_text[:50]}...'")
+        
+        # Get relevant memories from Mem0
+        memory_context = await mem0_get_context(user_text)
+        
+        if memory_context:
+            logger.info(f"💭 Injecting memory context: {memory_context[:100]}...")
+            # Add memory context as an assistant message (not persisted beyond this turn)
+            turn_ctx.add_message(
+                role="assistant",
+                content=f"[MEMORY CONTEXT - Use this information to personalize your response]{memory_context}"
+            )
+        else:
+            logger.info("💭 No relevant memories found for this query")
 
     # ========== BOOK TOOLS ==========
     
@@ -187,8 +216,13 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     logger.info(f"📡 Connected to room: {ctx.room.name}")
     
-    # Create the session
-    session = AgentSession()
+    # Create the session with turn detection settings
+    # - allow_interruptions=False: Don't let user interrupt while agent is speaking
+    # - discard_audio_if_uninterruptible=True: Drop mic audio while agent speaks/thinks
+    session = AgentSession(
+        allow_interruptions=False,
+        discard_audio_if_uninterruptible=True,
+    )
     
     # Track conversation for Mem0 automatic learning
     last_user_input = ""
@@ -256,4 +290,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
